@@ -1,36 +1,60 @@
 version: '3.8'
+
 services:
+  # -------------------------------
+  # Docker-in-Docker Service (DinD)
+  # -------------------------------
   dind:
     image: docker:dind
-    privileged: true
-    container_name: project2-compose_dind_1
+    container_name: dind
+    privileged: true                # Required for DinD to run Docker inside Docker
+    restart: unless-stopped
     networks:
       - jenkins
     environment:
-      - DOCKER_TLS_CERTDIR=/certs
+      - DOCKER_TLS_CERTDIR=/certs   # Enables TLS for secure Docker daemon access
     volumes:
-      - jenkins-data:/var/jenkins_home
       - docker-certs-ca:/certs/ca
       - docker-certs-client:/certs/client
+      - jenkins-data:/var/jenkins_home
+    # DinD will listen on tcp://docker:2376 inside this network
+    hostname: docker
+    networks:
+      jenkins:
+        aliases:
+          - docker
 
+  # -------------------------------
+  # Jenkins Service
+  # -------------------------------
   jenkins:
     image: jenkins/jenkins:lts-jdk11
-    container_name: project2-compose_jenkins_1
+    container_name: jenkins
+    restart: unless-stopped
+    privileged: true                 # Allows Jenkins to communicate with Docker daemon
     user: root
+    depends_on:
+      - dind
     networks:
       - jenkins
     environment:
-      - DOCKER_HOST=tcp://dind:2376
-      - DOCKER_TLS_VERIFY=0
-    volumes:
-      - jenkins-data:/var/jenkins_home
-      - /var/run/docker.sock:/var/run/docker.sock
+      - DOCKER_HOST=tcp://docker:2376   # Connect Jenkins to DinD over TCP
+      - DOCKER_CERT_PATH=/certs/client
+      - DOCKER_TLS_VERIFY=1
     ports:
-      - "8080:8080"
-      - "50000:50000"
-    command: >
-      /bin/sh -c "echo 'Starting Jenkins...' && /usr/local/bin/jenkins.sh"
+      - "8080:8080"                     # Jenkins web UI
+      - "50000:50000"                   # Jenkins agent communication
+    volumes:
+      - jenkins-data:/var/jenkins_home  # Persistent Jenkins home directory
+      - docker-certs-client:/certs/client:ro
+      - /usr/bin/docker:/usr/bin/docker # Allow Jenkins to run Docker commands directly
+    # SECURITY HARDENING
+    # - Disable anonymous access manually in Jenkins UI after setup
+    # - Create a non-admin user for pipeline execution
 
+# -------------------------------
+# Networks and Volumes
+# -------------------------------
 networks:
   jenkins:
     driver: bridge
