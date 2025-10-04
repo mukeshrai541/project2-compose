@@ -1,10 +1,9 @@
 version: '3.8'
 services:
-  # run docker in docker
   dind:
     image: docker:dind
     privileged: true
-    container_name: dind
+    container_name: project2-compose_dind_1
     networks:
       - jenkins
     environment:
@@ -14,27 +13,27 @@ services:
       - docker-certs-ca:/certs/ca
       - docker-certs-client:/certs/client
 
-  # run jenkins
   jenkins:
     image: jenkins/jenkins:lts-jdk11
-    container_name: jenkins
+    container_name: project2-compose_jenkins_1
+    user: root
     networks:
       - jenkins
     environment:
       - DOCKER_HOST=tcp://dind:2376
-      - DOCKER_CERT_PATH=/certs/client
-      - DOCKER_TLS_VERIFY=1
-    # jenkins data
+      - DOCKER_TLS_VERIFY=0
     volumes:
       - jenkins-data:/var/jenkins_home
-      - docker-certs-client:/certs/client:ro
-      - /usr/bin/docker:/usr/bin/docker  # Mount host Docker binary if needed
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8080:8080"
       - "50000:50000"
+    command: >
+      /bin/sh -c "echo 'Starting Jenkins...' && /usr/local/bin/jenkins.sh"
 
 networks:
   jenkins:
+    driver: bridge
 
 volumes:
   jenkins-data:
