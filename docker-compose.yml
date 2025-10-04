@@ -1,0 +1,42 @@
+version: '3.8'
+services:
+  # run docker in docker
+  dind:
+    image: docker:dind
+    privileged: true
+    container_name: dind
+    networks:
+      - jenkins
+    environment:
+      - DOCKER_TLS_CERTDIR=/certs
+    volumes:
+      - jenkins-data:/var/jenkins_home
+      - docker-certs-ca:/certs/ca
+      - docker-certs-client:/certs/client
+
+  # run jenkins
+  jenkins:
+    image: jenkins/jenkins:lts-jdk11
+    container_name: jenkins
+    networks:
+      - jenkins
+    environment:
+      - DOCKER_HOST=tcp://dind:2376
+      - DOCKER_CERT_PATH=/certs/client
+      - DOCKER_TLS_VERIFY=1
+    # jenkins data
+    volumes:
+      - jenkins-data:/var/jenkins_home
+      - docker-certs-client:/certs/client:ro
+      - /usr/bin/docker:/usr/bin/docker  # Mount host Docker binary if needed
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+
+networks:
+  jenkins:
+
+volumes:
+  jenkins-data:
+  docker-certs-ca:
+  docker-certs-client:
