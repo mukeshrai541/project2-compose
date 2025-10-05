@@ -1,47 +1,86 @@
-# Docker-in-Docker service for building and managing Docker images
+# Specifies the Docker Compose file version for compatibility
 version: '3.8'
+# Defines the services (containers) in the composition
 services:
+  # Docker-in-Docker (DinD) service for running Docker commands securely inside Jenkins
   dind:
+    # Uses the official Docker DinD image
     image: docker:dind
+    # Sets a custom name for the container
     container_name: dind
+    # Grants privileged access required for DinD to function
     privileged: true
+    # Runs the container as root user
     user: root
+    # Defines environment variables for the service
     environment:
+      # Configures TLS certificate directory for secure Docker communication
       - DOCKER_TLS_CERTDIR=/certs
+    # Mounts volumes for data persistence and sharing
     volumes:
+      # Volume for CA certificates
       - docker-certs-ca:/certs/ca
+      # Volume for client certificates
       - docker-certs-client:/certs/client
+      # Shared volume for Jenkins home directory
       - jenkins-data:/var/jenkins_home
+    # Connects the service to networks
     networks:
+      # Joins the custom 'jenkins' network
       jenkins:
+        # Sets network aliases for service discovery
         aliases:
+          # Alias 'docker' for easy reference from other services
           - docker
   # Jenkins service for running CI/CD pipelines
   jenkins:
+    # Uses the official Jenkins LTS image with JDK 11
     image: jenkins/jenkins:lts-jdk11
+    # Sets a custom name for the container
     container_name: jenkins
+    # Runs the container as root user
     user: root
+    # Defines environment variables for the service
     environment:
+      # Sets the Docker host to connect to DinD via TCP
       - DOCKER_HOST=tcp://docker:2376
+      # Specifies the path to Docker TLS certificates
       - DOCKER_CERT_PATH=/certs/client
+      # Enables TLS verification for Docker connections
       - DOCKER_TLS_VERIFY=1
+    # Mounts volumes for data persistence and sharing
     volumes:
+      # Persists Jenkins home directory
       - jenkins-data:/var/jenkins_home
+      # Mounts client certificates as read-only
       - docker-certs-client:/certs/client:ro
+      # Mounts the host's Docker binary into the container
       - /usr/bin/docker:/usr/bin/docker
+    # Exposes ports from the container to the host
     ports:
+      # Maps Jenkins web UI port
       - "8080:8080"
+      # Maps Jenkins agent communication port
       - "50000:50000"
+    # Specifies dependencies on other services
     depends_on:
+      # Depends on the 'dind' service to start first
       - dind
+    # Connects the service to networks
     networks:
+      # Joins the custom 'jenkins' network
       - jenkins
-# Persistent volumes for Jenkins data and Docker certificates
+# Defines named volumes for data persistence across container restarts
 volumes:
+  # Volume for Jenkins data storage
   jenkins-data:
+  # Volume for Docker CA certificates
   docker-certs-ca:
+  # Volume for Docker client certificates
   docker-certs-client:
-# Custom network for secure communication
+# Defines custom networks for service isolation and communication
 networks:
+  # Custom network named 'jenkins'
   jenkins:
+    # Uses the bridge driver for the network
     driver: bridge
