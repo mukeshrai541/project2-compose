@@ -1,57 +1,43 @@
 version: '3.8'
 
 services:
-  # --------------------------------------------------
-  # Docker-in-Docker (DinD) Service
-  # --------------------------------------------------
   dind:
     image: docker:dind
     container_name: dind
-    privileged: true                   # Required for Docker daemon inside container
+    privileged: true
     restart: unless-stopped
-    environment:
-      - DOCKER_TLS_CERTDIR=/certs      # Enables TLS for secure Docker communication
     networks:
       - jenkins
+    environment:
+      - DOCKER_TLS_CERTDIR=/certs
     volumes:
       - docker-certs-ca:/certs/ca
       - docker-certs-client:/certs/client
       - jenkins-data:/var/jenkins_home
     hostname: docker
-    networks:
-      jenkins:
-        aliases:
-          - docker                      # So Jenkins can access it via tcp://docker:2376
 
-  # --------------------------------------------------
-  # Jenkins CI Server
-  # --------------------------------------------------
   jenkins:
     image: jenkins/jenkins:lts-jdk11
     container_name: jenkins
+    user: root
     restart: unless-stopped
-    privileged: true                    # Allows Jenkins to control Docker (needed for DinD)
-    user: root                          # Run as root to avoid Docker permission issues
+    privileged: true
     depends_on:
       - dind
     networks:
       - jenkins
     environment:
-      - DOCKER_HOST=tcp://docker:2376   # Points Jenkins to Docker daemon in dind
+      - DOCKER_HOST=tcp://docker:2376
       - DOCKER_CERT_PATH=/certs/client
       - DOCKER_TLS_VERIFY=1
     ports:
-      - "8080:8080"                     # Jenkins Web UI
-      - "50000:50000"                   # Jenkins Agent Port
+      - "8080:8080"
+      - "50000:50000"
     volumes:
-      - jenkins-data:/var/jenkins_home  # Persistent Jenkins data
+      - jenkins-data:/var/jenkins_home
       - docker-certs-client:/certs/client:ro
-      - /usr/bin/docker:/usr/bin/docker # Mount host Docker binary inside Jenkins
-      - /var/run/docker.sock:/var/run/docker.sock # Mount Docker socket for CLI access
+      - /var/run/docker.sock:/var/run/docker.sock
 
-# --------------------------------------------------
-# Docker Network and Volumes
-# --------------------------------------------------
 networks:
   jenkins:
     driver: bridge
