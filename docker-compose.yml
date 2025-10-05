@@ -1,52 +1,62 @@
-version: '3.8'
-
-services:
-  dind:
-    image: docker:dind
-    container_name: dind
-    privileged: true
-    restart: unless-stopped
-    networks:
-      - jenkins
-    environment:
-      - DOCKER_TLS_CERTDIR=/certs
-    volumes:
-      - docker-certs-ca:/certs/ca
-      - docker-certs-client:/certs/client
-      - jenkins-data:/var/jenkins_home
-    networks:
-      jenkins:
-        aliases:
-          - docker
-
-  jenkins:
-    build:
-      context: .
-      dockerfile: JenkinsDockerfile
-    container_name: jenkins
-    restart: unless-stopped
-    privileged: true
-    user: root
-    depends_on:
-      - dind
-    networks:
-      - jenkins
-    environment:
-      - DOCKER_HOST=tcp://docker:2376
-      - DOCKER_CERT_PATH=/certs/client
-      - DOCKER_TLS_VERIFY=1
-    ports:
-      - "8080:8080"
-      - "50000:50000"
-    volumes:
-      - jenkins-data:/var/jenkins_home
-      - docker-certs-client:/certs/client:ro
-
-networks:
-  jenkins:
-    driver: bridge
-
-volumes:
-  jenkins-data:
-  docker-certs-ca:
-  docker-certs-client:
+pipeline {
+    agent {
+        docker {
+            image 'node:16'
+            args '-u root --env DOCKER_HOST=tcp://docker:2376 --env DOCKER_TLS_VERIFY=1 --env DOCKER_CERT_PATH=/certs/client'
+        }
+    }
+    environment {
+        SNYK_TOKEN = credentials('snyk-token')
+        DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
+    }
+    stages {
+        stage('Setup Docker') {
+            steps {
+                sh '''
+                    apt-get update
+                    apt-get install -y docker.io
+                '''
+            }
+        }
+        stage('Install') {
+            steps {
+                sh 'npm install'
+            }
+        }
+        stage('Test') {
+            steps {
+                sh 'npm test'
+            }
+        }
+        stage('Build Image') {
+            steps {
+                sh 'docker build -t mukeshrai541/nodeapp:latest .'
+            }
+        }
+        stage('Security Scan') {
+            steps {
+                sh '''
+                    npm install -g snyk
+                    snyk test --severity-threshold=high
+                '''
+            }
+        }
+        stage('Push Image') {
+            steps {
+                withDockerRegistry([credentialsId: 'docker-hub-credentials', url: 'https://index.docker.io/v1/']) {
+                    sh 'docker push mukeshrai541/nodeapp:latest'
+                }
+            }
+        }
+        stage('Archive Artifacts') {
+            steps {
+                archiveArtifacts artifacts: 'npm-debug.log', allowEmptyArchive: true
+            }
+        }
+    }
+    post {
+        always {
+            cleanWs()
+        }
+    }
+}
