@@ -14,14 +14,19 @@ services:
       - docker-certs-ca:/certs/ca
       - docker-certs-client:/certs/client
       - jenkins-data:/var/jenkins_home
-    hostname: docker
+    networks:
+      jenkins:
+        aliases:
+          - docker
 
   jenkins:
-    image: jenkins/jenkins:lts-jdk11
+    build:
+      context: .
+      dockerfile: JenkinsDockerfile
     container_name: jenkins
-    user: root
     restart: unless-stopped
     privileged: true
+    user: root
     depends_on:
       - dind
     networks:
@@ -36,7 +41,6 @@ services:
     volumes:
       - jenkins-data:/var/jenkins_home
       - docker-certs-client:/certs/client:ro
-      - /var/run/docker.sock:/var/run/docker.sock
 
 networks:
   jenkins:
