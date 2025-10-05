@@ -1,62 +1,47 @@
-pipeline {
-    agent {
-        docker {
-            image 'node:16'
-            args '-u root --env DOCKER_HOST=tcp://docker:2376 --env DOCKER_TLS_VERIFY=1 --env DOCKER_CERT_PATH=/certs/client'
-        }
-    }
-    environment {
-        SNYK_TOKEN = credentials('snyk-token')
-        DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
-    }
-    stages {
-        stage('Setup Docker') {
-            steps {
-                sh '''
-                    apt-get update
-                    apt-get install -y docker.io
-                '''
-            }
-        }
-        stage('Install') {
-            steps {
-                sh 'npm install'
-            }
-        }
-        stage('Test') {
-            steps {
-                sh 'npm test'
-            }
-        }
-        stage('Build Image') {
-            steps {
-                sh 'docker build -t mukeshrai541/nodeapp:latest .'
-            }
-        }
-        stage('Security Scan') {
-            steps {
-                sh '''
-                    npm install -g snyk
-                    snyk test --severity-threshold=high
-                '''
-            }
-        }
-        stage('Push Image') {
-            steps {
-                withDockerRegistry([credentialsId: 'docker-hub-credentials', url: 'https://index.docker.io/v1/']) {
-                    sh 'docker push mukeshrai541/nodeapp:latest'
-                }
-            }
-        }
-        stage('Archive Artifacts') {
-            steps {
-                archiveArtifacts artifacts: 'npm-debug.log', allowEmptyArchive: true
-            }
-        }
-    }
-    post {
-        always {
-            cleanWs()
-        }
-    }
-}
+# Docker-in-Docker service for building and managing Docker images
+version: '3.8'
+services:
+  dind:
+    image: docker:dind
+    container_name: dind
+    privileged: true
+    user: root
+    environment:
+      - DOCKER_TLS_CERTDIR=/certs
+    volumes:
+      - docker-certs-ca:/certs/ca
+      - docker-certs-client:/certs/client
+      - jenkins-data:/var/jenkins_home
+    networks:
+      jenkins:
+        aliases:
+          - docker
+  # Jenkins service for running CI/CD pipelines
+  jenkins:
+    image: jenkins/jenkins:lts-jdk11
+    container_name: jenkins
+    user: root
+    environment:
+      - DOCKER_HOST=tcp://docker:2376
+      - DOCKER_CERT_PATH=/certs/client
+      - DOCKER_TLS_VERIFY=1
+    volumes:
+      - jenkins-data:/var/jenkins_home
+      - docker-certs-client:/certs/client:ro
+      - /usr/bin/docker:/usr/bin/docker
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    depends_on:
+      - dind
+    networks:
+      - jenkins
+# Persistent volumes for Jenkins data and Docker certificates
+volumes:
+  jenkins-data:
+  docker-certs-ca:
+  docker-certs-client:
+# Custom network for secure communication
+networks:
+  jenkins:
+    driver: bridge
